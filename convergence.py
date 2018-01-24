@@ -52,13 +52,9 @@ class ConvergenceTracker(object):
         self.edit_input(param_list, var_list)
 
         # Commit initial input.
-        submit = call('cp files/pw-scf_1.out pw-scf.out', shell=True)
-        if submit != 0:
-            raise AssertionError('Could not submit job.')
-        energy = self.scrape_output(self.output_file)
+        energy = self.calculate(var_list)
 
         converged = False
-        index = 2  # just for test purposes.
         while not converged:
             # Setup a new input.
             kpts = self._iterate_kpoints(var_list[-1])
@@ -66,21 +62,13 @@ class ConvergenceTracker(object):
             self.edit_input(param_list, var_list)
 
             # Run calculation.
-            submit = call(
-                'cp files/pw-scf_{}.out pw-scf.out'.format(index),
-                shell=True)
-            if submit != 0:
-                raise AssertionError('Could not submit job.')
-            new_energy = self.scrape_output(self.output_file)
-
-            print('iteration {0} energy {1}'.format(index, new_energy))
+            new_energy = self.calculate(var_list)
 
             # Check for convergence.
             if abs(energy - new_energy) < cutoff:
                 converged = True
             else:
                 energy = new_energy
-                index += 1
 
         return kpts
 
@@ -126,6 +114,32 @@ class ConvergenceTracker(object):
                 'Finding parameter {} not implemented.'.format(param))
 
         return res
+
+    def calculate(self, var_list):
+        """Function to calculate the energy.
+
+        Parameters
+        ----------
+        var_list : list
+            A list of variables corresponding to the same order as the
+            param_list.
+
+        Returns
+        -------
+        energy : float
+            The total energy from the output.
+        """
+        # Run dummy calculation.
+        submit = call(
+            'cp files/pw-scf_{}.out pw-scf.out'.format(var_list[1][0]),
+            shell=True)
+        if submit != 0:
+            raise AssertionError('Could not submit job.')
+        energy = self.scrape_output(self.output_file)
+
+        print('iteration {0} energy {1}'.format(var_list[1][0], energy))
+
+        return energy
 
     def _iterate_kpoints(self, original, step=1):
         """Function to increase the number of k-points.
