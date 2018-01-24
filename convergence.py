@@ -25,7 +25,7 @@ class ConvergenceTracker(object):
         with open(self.input_file, 'r') as f:
             self.input_data = [line for line in f if not line.isspace()]
 
-    def optimize(self, cutoff, param_list, initialize_kpts=False):
+    def optimize(self, cutoff, param_list, initialize_kpts=False, step=1):
         """Function to optimize kpoint parameter.
 
         Parameters
@@ -37,6 +37,8 @@ class ConvergenceTracker(object):
         initialize_kpts : bool
             Define whether to use the user defined K-points from the input
             script. If False, start from [1 1 1].
+        step : int
+            The step size to increase k-points.
 
         Returns
         -------
@@ -57,7 +59,7 @@ class ConvergenceTracker(object):
         converged = False
         while not converged:
             # Setup a new input.
-            kpts = self._iterate_kpoints(var_list[-1])
+            kpts = self._iterate_kpoints(var_list[-1], step)
             var_list[-1] = kpts
             self.edit_input(param_list, var_list)
 
@@ -130,18 +132,18 @@ class ConvergenceTracker(object):
             The total energy from the output.
         """
         # Run dummy calculation.
-        submit = call(
-            'cp files/pw-scf_{}.out pw-scf.out'.format(var_list[1][0]),
-            shell=True)
+        index = var_list[1].split(' ')[0]
+        submit = call('cp files/pw-scf_{}.out pw-scf.out'.format(index),
+                      shell=True)
         if submit != 0:
             raise AssertionError('Could not submit job.')
         energy = self.scrape_output(self.output_file)
 
-        print('iteration {0} energy {1}'.format(var_list[1][0], energy))
+        print('iteration {0} energy {1}'.format(index, energy))
 
         return energy
 
-    def _iterate_kpoints(self, original, step=1):
+    def _iterate_kpoints(self, original, step):
         """Function to increase the number of k-points.
 
         Parameters
@@ -267,4 +269,8 @@ class ConvergenceTrackerQE(ConvergenceTracker):
 
 if __name__ == '__main__':
     ConvergenceTrackerQE('files/pw_scf.in', 'pw-scf.out', 80).optimize(
-        cutoff=0.001, param_list=['kinetic_energy', 'kpoints'])
+        cutoff=0.001,
+        param_list=['kinetic_energy', 'kpoints'],
+        initialize_kpts=False,
+        step=1
+    )
