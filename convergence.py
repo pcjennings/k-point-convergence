@@ -8,8 +8,19 @@ class ConvergenceTracker(object):
         self.output_file = output_file
         self.kinetic_energy = kinetic_energy
 
-    def optimize(self, cutoff=0.001, param_list=['kinetic_energy', 'kpoints']):
+        # Get the input.
+        with open(self.input_file, 'r') as f:
+            self.input_data = [line for line in f if not line.isspace()]
+
+    def optimize(self, cutoff, param_list, initialize_kpts=False):
         """Function to optimize kpoint parameter."""
+        if initialize_kpts:
+            startk = self.get_start_params()
+        else:
+            startk = '1 1 1'
+        var_list = [self.kinetic_energy, startk]
+        self.edit_input(param_list, var_list)
+
         # Commit initial input.
         submit = call('cp files/pw-scf_1.out pw-scf.out', shell=True)
         if submit != 0:
@@ -18,18 +29,23 @@ class ConvergenceTracker(object):
 
         converged = False
         index = 2  # just for test purposes.
-        var_list = [self.kinetic_energy, '1 1 1']
         while not converged:
+            # Setup a new input.
             kpts = self._iterate_kpoints(var_list[-1])
             var_list[-1] = kpts
             self.edit_input(param_list, var_list)
+
+            # Run calculation.
             submit = call(
                 'cp files/pw-scf_{}.out pw-scf.out'.format(index),
                 shell=True)
             if submit != 0:
                 raise AssertionError('Could not submit job.')
             new_energy = self.scrape_output(self.output_file)
+
             print('iteration {0} energy {1}'.format(index, new_energy))
+
+            # Check for convergence.
             if abs(energy - new_energy) < cutoff:
                 converged = True
             else:
@@ -40,12 +56,7 @@ class ConvergenceTracker(object):
 
     def edit_input(self, param_list, var_list):
         """Function to edit qe input script."""
-        # Get the input.
-        with open(self.input_file, 'r') as f:
-            self.input_data = [line for line in f if not line.isspace()]
-
         self.update_input(param_list, var_list)
-
         # Write out the new file.
         with open('pw_scf.in', 'w') as f:
             f.write(''.join(self.input_data))
@@ -75,7 +86,7 @@ class ConvergenceTrackerQE(ConvergenceTracker):
 
     def update_input(self, param_list, var_list):
         """Function to edit qe input script."""
-        # Find the correct line to edit K_POINT values.
+        # Find the correct lines to edit values.
         for index, line in enumerate(self.input_data):
             # NOTE could be outside the loop for kpoints
             if 'ecutwfc' in line:
@@ -105,6 +116,13 @@ class ConvergenceTrackerQE(ConvergenceTracker):
             if 'total energy              =' in i:
                 return float(i.split(' ')[-2])
 
+    def get_start_params(self):
+        """Get user defined kpoints."""
+        for index, line in enumerate(self.input_data):
+            if 'K_POINTS' in line:
+                kpoints = self.input_data[index + 1].split(' ')
+                return ' '.join(kpoints[:3])
+
     def _set_kinetic_energy(self, edit, energy):
         """Function to edit ecutwfc."""
         s = self.input_data[edit].split(' ')
@@ -120,4 +138,5 @@ class ConvergenceTrackerQE(ConvergenceTracker):
 
 
 if __name__ == '__main__':
-    ConvergenceTrackerQE('files/pw_scf.in', 'pw-scf.out', 80).optimize()
+    ConvergenceTrackerQE('files/pw_scf.in', 'pw-scf.out', 80).optimize(
+        cutoff=0.001, param_list=['kinetic_energy', 'kpoints'])
